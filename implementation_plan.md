@@ -1,6 +1,6 @@
 # CoreSQL – A Lightweight SQL Database Engine in Java
 
-This document details the architecture and implementation of CoreSQL, a minimal relational database engine fully migrated to Java (targeting Java 21). It parses and executes a subset of SQL queries and implements a clean, generic, and modular architecture mirroring real engine layers without relying on external database dependencies.
+This document details the architecture and implementation of CoreSQL, a minimal relational database engine in Java (targeting Java 21). It parses and executes a subset of SQL queries and implements a clean, generic, and modular architecture mirroring real engine layers without relying on external database dependencies.
 
 ## Architecture
 
@@ -64,7 +64,3 @@ Manages file I/O for table definitions. Handles creating native `.csv` files for
 
 ---
 
-## Legacy Codebase
-
-> [!NOTE]  
-> The original C++ implementation of CoreSQL has been preserved within the `legacy_cpp/` directory for historical tracking and structural comparisons.
