@@ -1,87 +1,70 @@
-# CoreSQL – A Lightweight SQL Database Engine in C++
+# CoreSQL – A Lightweight SQL Database Engine in Java
 
-This document details the implementation plan for CoreSQL, a minimal relational database engine written in C++ that can parse and execute a subset of SQL queries. The goal is to build a highly modular architecture similar to real database engines, using only pure C++ (STL) without external database dependencies.
+This document details the architecture and implementation of CoreSQL, a minimal relational database engine fully migrated to Java (targeting Java 21). It parses and executes a subset of SQL queries and implements a clean, generic, and modular architecture mirroring real engine layers without relying on external database dependencies.
 
-## User Review Required
+## Architecture
 
-> [!IMPORTANT]
-> Please review the proposed architecture and project structure before we begin implementation. Once approved, I will proceed to create the project components systematically.
-
-> [!WARNING]
-> Since standard C++ does not provide a built-in cross-platform advanced file locking mechanism (without external dependencies or OS specific API), table storage via file modifications might not be highly concurrent. Let me know if you would like adding mutexes/locks in memory representation.
-
-## Proposed Changes
-
-The project will follow a 5-phase development lifecycle. We will break down the CoreSQL application into distinct components.
+The project follows a standard Maven directory structure (`src/main/java/com/coresql/`) and is broken down into distinct logical components.
 
 ---
 
-### Project Skeleton and Build System
+### Build System & Entry Point
 
-Setting up the main directory structure and compilation instructions (We will use CMake or a simple generic build script).
+The application relies on Maven for dependency-free compilation to Java 21. `Main.java` serves as the interactive REPL shell for the database.
 
-#### [NEW] [CMakeLists.txt](file:///d:/Projects/coresql-engine/CMakeLists.txt)
-#### [NEW] [README.md](file:///d:/Projects/coresql-engine/README.md)
-#### [NEW] [main.cpp](file:///d:/Projects/coresql-engine/src/main.cpp)
+#### [pom.xml](file:///d:/Projects/coresql-engine/pom.xml)
+#### [Main.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/Main.java)
 
 ---
 
 ### Tokenizer (Lexical Analyzer)
 
-Will convert raw SQL strings into discrete Tokens (Keyword, Identifier, Operator, Literal).
+Converts raw SQL strings into discrete Java `Token` records (Keyword, Identifier, Operator, Literal).
 
-#### [NEW] [tokenizer.h](file:///d:/Projects/coresql-engine/src/tokenizer/tokenizer.h)
-#### [NEW] [tokenizer.cpp](file:///d:/Projects/coresql-engine/src/tokenizer/tokenizer.cpp)
+#### [TokenType.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/tokenizer/TokenType.java)
+#### [Token.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/tokenizer/Token.java)
+#### [Tokenizer.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/tokenizer/Tokenizer.java)
 
 ---
 
 ### Abstract Syntax Tree (AST)
 
-Definitions for the structured representation of SQL queries (CreateTableQuery, InsertQuery, SelectQuery). Includes enums for data types and operators.
+Definitions for the structured representation of SQL queries. Includes `Condition` models for `WHERE` clauses and generic extensions of the abstract `Query` class.
 
-#### [NEW] [query_ast.h](file:///d:/Projects/coresql-engine/src/ast/query_ast.h)
+#### [Query.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/ast/Query.java)
+#### [QueryType.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/ast/QueryType.java)
+#### [CreateTableQuery.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/ast/CreateTableQuery.java)
+#### [InsertQuery.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/ast/InsertQuery.java)
+#### [SelectQuery.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/ast/SelectQuery.java)
+#### [Condition.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/ast/Condition.java)
 
 ---
 
 ### Parser
 
-Consumes tokens from the Lexer and matches them against our supported grammar to produce the Abstract Syntax Tree representations.
+Consumes tokens from the Tokenizer and matches them against the supported SQL grammar to produce the AST representations. Uses strict exception throwing for syntax rules.
 
-#### [NEW] [parser.h](file:///d:/Projects/coresql-engine/src/parser/parser.h)
-#### [NEW] [parser.cpp](file:///d:/Projects/coresql-engine/src/parser/parser.cpp)
-
----
-
-### Storage Layer
-
-Manages file I/O for table definitions. Handles creating CSV files for tables, appending rows, and reading all rows.
-
-#### [NEW] [storage_engine.h](file:///d:/Projects/coresql-engine/src/storage/storage_engine.h)
-#### [NEW] [storage_engine.cpp](file:///d:/Projects/coresql-engine/src/storage/storage_engine.cpp)
+#### [Parser.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/parser/Parser.java)
 
 ---
 
 ### Execution Engine
 
-Consumes the query ASTs and interacts with the Storage layer to fulfill instructions. Filters results using the given WHERE conditions.
+Consumes the query ASTs and interacts with the Storage logic to fulfill instructions. It leverages modern Java 21 enhanced `switch` pattern matching to route and execute logic and filter rows via `WHERE` condition evaluations.
 
-#### [NEW] [executor.h](file:///d:/Projects/coresql-engine/src/executor/executor.h)
-#### [NEW] [executor.cpp](file:///d:/Projects/coresql-engine/src/executor/executor.cpp)
+#### [Executor.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/engine/Executor.java)
 
 ---
 
-## Open Questions
+### Storage Layer
 
-> [!IMPORTANT]
-> * **Build System**: Are you okay with me setting up a `CMakeLists.txt` file for easy compilation?
-> * **Data Types**: The schema example doesn't strictly define data types (e.g. `CREATE TABLE students (id, name, marks)`). Should the storage engine auto-infer types, store everything as strings internally until checked computationally, or require explicit types in table creation?
+Manages file I/O for table definitions. Handles creating native `.csv` files for tables inside the `tables/` directory, cleanly appending rows natively, and reading datasets via generic `BufferedReader` operations.
 
-## Verification Plan
+#### [StorageEngine.java](file:///d:/Projects/coresql-engine/src/main/java/com/coresql/engine/StorageEngine.java)
 
-### Automated Tests
-- No formal unit test library is requested using C++ standard libraries alone, but `main.cpp` will execute predefined test suites dynamically constructing statements and verifying results visually in the CLI.
+---
 
-### Manual Verification
-- We will dynamically run test queries interactively through a REPL style loop using `main.cpp` and verifying that:
-  - Output is correct for `SELECT`.
-  - Proper `.csv` files are generated in the `tables/` directory.
+## Legacy Codebase
+
+> [!NOTE]  
+> The original C++ implementation of CoreSQL has been preserved within the `legacy_cpp/` directory for historical tracking and structural comparisons.
