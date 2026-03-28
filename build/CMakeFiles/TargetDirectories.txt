@@ -1,0 +1,3 @@
+D:/Projects/coresql-engine/build/CMakeFiles/CoreSQL.dir
+D:/Projects/coresql-engine/build/CMakeFiles/ALL_BUILD.dir
+D:/Projects/coresql-engine/build/CMakeFiles/ZERO_CHECK.dir
