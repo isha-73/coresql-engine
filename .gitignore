@@ -1,41 +1,24 @@
-# Prerequisites
-*.d
+# --- CoreSQL App Data ---
+tables/*.csv
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# --- Java & Maven ---
+*.class
+*.log
+*.jar
+*.war
+target/
+build/
+out/
+hs_err_pid*
 
-# Precompiled Headers
-*.gch
-*.pch
+# --- IDEs ---
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+bin/
 
-# Linker files
-*.ilk
 
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-# debug information files
-*.dwo
+legacy_cpp/build/
