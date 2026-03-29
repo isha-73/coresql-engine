@@ -7,7 +7,6 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class StorageEngine {
@@ -24,6 +23,69 @@ public class StorageEngine {
         return tablesDirectory + tableName + ".csv";
     }
 
+    private String encodeCsvRow(List<String> values) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < values.size(); i++) {
+            String value = values.get(i);
+            if (value == null) value = "";
+            boolean needsQuotes = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r");
+            if (needsQuotes) {
+                sb.append("\"").append(value.replace("\"", "\"\"")).append("\"");
+            } else {
+                sb.append(value);
+            }
+            if (i < values.size() - 1) {
+                sb.append(",");
+            }
+        }
+        return sb.toString();
+    }
+
+    private List<String> readCsvRow(BufferedReader br) throws IOException {
+        String line = br.readLine();
+        if (line == null) return null;
+
+        List<String> values = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+
+        while (true) {
+            for (int i = 0; i < line.length(); i++) {
+                char c = line.charAt(i);
+                if (inQuotes) {
+                    if (c == '"') {
+                        if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                            current.append('"');
+                            i++;
+                        } else {
+                            inQuotes = false;
+                        }
+                    } else {
+                        current.append(c);
+                    }
+                } else {
+                    if (c == '"') {
+                        inQuotes = true;
+                    } else if (c == ',') {
+                        values.add(current.toString());
+                        current.setLength(0);
+                    } else {
+                        current.append(c);
+                    }
+                }
+            }
+            if (inQuotes) {
+                current.append("\n");
+                line = br.readLine();
+                if (line == null) break;
+            } else {
+                break;
+            }
+        }
+        values.add(current.toString());
+        return values;
+    }
+
     public boolean createTable(String tableName, List<String> columns) {
         String path = getTablePath(tableName);
         File file = new File(path);
@@ -34,7 +96,7 @@ public class StorageEngine {
         }
 
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
-            bw.write(String.join(",", columns));
+            bw.write(encodeCsvRow(columns));
             bw.newLine();
             return true;
         } catch (IOException e) {
@@ -54,9 +116,9 @@ public class StorageEngine {
 
         // Validate arity against table header
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-            String header = br.readLine();
+            List<String> header = readCsvRow(br);
             if (header != null) {
-                int expectedCols = header.split(",", -1).length;
+                int expectedCols = header.size();
                 if (values.size() != expectedCols) {
                     System.err.println("Error: Column count mismatch. Expected " + expectedCols + ", got " + values.size());
                     return false;
@@ -68,7 +130,7 @@ public class StorageEngine {
         }
 
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(file, true))) {
-            bw.write(String.join(",", values));
+            bw.write(encodeCsvRow(values));
             bw.newLine();
             return true;
         } catch (IOException e) {
@@ -93,17 +155,18 @@ public class StorageEngine {
 
         TableData data = new TableData();
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-            String line = br.readLine();
-            if (line == null) {
+            List<String> header = readCsvRow(br);
+            if (header == null) {
                 return null; // Empty file
             }
             // Read header
-            data.columns.addAll(Arrays.asList(line.split(",", -1)));
+            data.columns.addAll(header);
 
             // Read rows
-            while ((line = br.readLine()) != null) {
-                if (line.isEmpty()) continue;
-                data.rows.add(Arrays.asList(line.split(",", -1)));
+            List<String> row;
+            while ((row = readCsvRow(br)) != null) {
+                if (row.size() == 1 && row.get(0).isEmpty()) continue;
+                data.rows.add(row);
             }
             return data;
         } catch (IOException e) {
