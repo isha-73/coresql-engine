@@ -6,7 +6,7 @@ import java.util.Set;
 
 public class Tokenizer {
     private static final Set<String> KEYWORDS = Set.of(
-        "CREATE", "TABLE", "INSERT", "INTO", "VALUES", "SELECT", "FROM", "WHERE"
+        "CREATE", "TABLE", "INSERT", "INTO", "VALUES", "SELECT", "FROM", "WHERE", "INT", "STRING"
     );
 
     private final String query;
