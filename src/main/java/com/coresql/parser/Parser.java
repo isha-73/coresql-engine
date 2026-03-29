@@ -54,15 +54,27 @@ public class Parser {
     }
 
     public Query parse() {
+        Query query;
         if (match(TokenType.KEYWORD, "CREATE")) {
-            return parseCreateTable();
+            query = parseCreateTable();
         } else if (match(TokenType.KEYWORD, "INSERT")) {
-            return parseInsert();
+            query = parseInsert();
         } else if (match(TokenType.KEYWORD, "SELECT")) {
-            return parseSelect();
+            query = parseSelect();
         } else {
             throw new IllegalArgumentException("Syntax error: unexpected token " + peek().value());
         }
+        return ensureStatementEnd(query);
+    }
+
+    private Query ensureStatementEnd(Query query) {
+        if (match(TokenType.SYMBOL, ";")) {
+            // Optional trailing semicolon consumed.
+        }
+        if (!match(TokenType.END_OF_FILE)) {
+            throw new IllegalArgumentException("Syntax error: unexpected token " + peek().value());
+        }
+        return query;
     }
 
     private Query parseCreateTable() {
