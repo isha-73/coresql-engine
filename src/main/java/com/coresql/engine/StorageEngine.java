@@ -52,6 +52,21 @@ public class StorageEngine {
             return false;
         }
 
+        // Validate arity against table header
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            String header = br.readLine();
+            if (header != null) {
+                int expectedCols = header.split(",", -1).length;
+                if (values.size() != expectedCols) {
+                    System.err.println("Error: Column count mismatch. Expected " + expectedCols + ", got " + values.size());
+                    return false;
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to read header for validation: " + path);
+            return false;
+        }
+
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(file, true))) {
             bw.write(String.join(",", values));
             bw.newLine();
