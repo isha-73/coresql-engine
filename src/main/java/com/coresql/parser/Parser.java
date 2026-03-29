@@ -93,7 +93,13 @@ public class Parser {
             if (colToken.type() != TokenType.IDENTIFIER) {
                 throw new IllegalArgumentException("Syntax error: expected column name");
             }
-            query.columns.add(colToken.value());
+
+            Token typeToken = advance();
+            if (typeToken.type() != TokenType.KEYWORD && typeToken.type() != TokenType.IDENTIFIER) {
+                throw new IllegalArgumentException("Syntax error: expected column type");
+            }
+
+            query.columns.add(new ColumnDefinition(colToken.value(), typeToken.value()));
             
             if (!match(TokenType.SYMBOL, ",")) {
                 expect(TokenType.SYMBOL, ")");

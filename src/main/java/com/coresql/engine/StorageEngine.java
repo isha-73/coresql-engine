@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.coresql.ast.ColumnDefinition;
+
 public class StorageEngine {
     private final String tablesDirectory = "tables/";
 
@@ -86,7 +88,32 @@ public class StorageEngine {
         return values;
     }
 
-    public boolean createTable(String tableName, List<String> columns) {
+    public List<ColumnDefinition> readSchema(String tableName) {
+        String path = getTablePath(tableName);
+        File file = new File(path);
+        
+        if (!file.exists()) return null;
+
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            List<String> header = readCsvRow(br);
+            if (header == null) return null;
+
+            List<ColumnDefinition> schema = new ArrayList<>();
+            for (String h : header) {
+                String[] parts = h.split(":");
+                if (parts.length >= 2) {
+                    schema.add(new ColumnDefinition(parts[0], parts[1]));
+                } else {
+                    schema.add(new ColumnDefinition(h, "STRING"));
+                }
+            }
+            return schema;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    public boolean createTable(String tableName, List<ColumnDefinition> columns) {
         String path = getTablePath(tableName);
         File file = new File(path);
         
@@ -95,8 +122,13 @@ public class StorageEngine {
             return false;
         }
 
+        List<String> encodedCols = new ArrayList<>();
+        for (ColumnDefinition cd : columns) {
+            encodedCols.add(cd.name + ":" + cd.type);
+        }
+
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
-            bw.write(encodeCsvRow(columns));
+            bw.write(encodeCsvRow(encodedCols));
             bw.newLine();
             return true;
         } catch (IOException e) {
@@ -140,7 +172,7 @@ public class StorageEngine {
     }
 
     public static class TableData {
-        public List<String> columns = new ArrayList<>();
+        public List<ColumnDefinition> columns = new ArrayList<>();
         public List<List<String>> rows = new ArrayList<>();
     }
 
@@ -160,7 +192,14 @@ public class StorageEngine {
                 return null; // Empty file
             }
             // Read header
-            data.columns.addAll(header);
+            for (String h : header) {
+                String[] parts = h.split(":");
+                if (parts.length >= 2) {
+                    data.columns.add(new ColumnDefinition(parts[0], parts[1]));
+                } else {
+                    data.columns.add(new ColumnDefinition(h, "STRING"));
+                }
+            }
 
             // Read rows
             List<String> row;
