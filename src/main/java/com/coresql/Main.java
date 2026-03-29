@@ -25,19 +25,21 @@ public class Main {
         try (Scanner scanner = new Scanner(System.in)) {
             while (true) {
                 System.out.print("CoreSQL> ");
-                if (!scanner.hasNextLine()) break;
-                
+                if (!scanner.hasNextLine())
+                    break;
+
                 String line = scanner.nextLine();
-                if (line.trim().isEmpty()) continue;
+                if (line.trim().isEmpty())
+                    continue;
 
                 String upperLine = line.trim().toUpperCase();
-                if (upperLine.equals("EXIT") || upperLine.equals("QUIT") || 
-                    upperLine.equals("EXIT;") || upperLine.equals("QUIT;")) {
+                if (upperLine.equals("EXIT") || upperLine.equals("QUIT") ||
+                        upperLine.equals("EXIT;") || upperLine.equals("QUIT;")) {
                     break;
                 }
 
                 try {
-                    Tokenizer tokenizer = new Tokenizer(line);
+                    Tokenizer tokenizer = new Tokenizer(line); // line is query string
                     List<Token> tokens = tokenizer.tokenize();
 
                     Parser parser = new Parser(tokens);
