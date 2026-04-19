@@ -12,7 +12,7 @@ When you execute a text query (like `SELECT * FROM users`), the Tokenizer steps 
 
 ### 2. Parser (`com.coresql.parser`)
 **Purpose:** Grammar Enforcement and AST creation.<br>
-The Parser receives the ordered stream of `Token`s and enforces SQL syntax rules (e.g., ensuring `TABLE` is the second token in a `CREATE` statement). It parses these tokens into hierarchical Abstract Syntax Tree (AST) objects. If the syntax is invalid, it throws an `IllegalArgumentException`.
+The Parser receives the ordered stream of `Token`s and enforces SQL syntax rules (e.g., ensuring `TABLE` is the second token in a `CREATE` statement). It gracefully supports both standard identifiers and quoted string identifiers (enabling table and column names with spaces). It parses these tokens into hierarchical Abstract Syntax Tree (AST) objects. If the syntax is invalid, it throws an `IllegalArgumentException`.
 
 ### 3. AST (Abstract Syntax Tree) (`com.coresql.ast`)
 **Purpose:** Semantic Representation.<br>
@@ -25,6 +25,10 @@ This component creates and manages a local `tables/` directory natively. Tables 
 ### 5. Executor (`com.coresql.engine.Executor`)
 **Purpose:** Processing and Condition Evaluation.<br>
 The Executor bridges the AST logic and the Storage Engine. Utilizing native Java 21 pattern-matching features, it intercepts `Query` objects and routes them. For `SelectQuery` operations, it pulls purely raw strings from the Storage Engine, loops through them, and handles strict data-type guessing and condition evaluation for `WHERE` clauses (e.g. `age > 25`).
+
+### 6. Write-Ahead Logging (WAL) & Crash Recovery (`com.coresql.engine.WalManager`)
+**Purpose:** Data Durability and Idempotent Recovery.<br>
+To guarantee crash resilience, CoreSQL implements an ARIES-style continuous Write-Ahead Log. All structurally modifying queries append sequentially to a global `wal.log` file. To accelerate engine boot times, a master `wal.log.checkpoint` file serves as a global sync marker. Additionally, the storage engine intelligently tracks per-table commit state utilizing Table LSNs (Log Sequence Numbers) within `.csv.lsn` sidecar files. This dual-checkpoint strategy guarantees 100% idempotent REDO phase recovery processing and prevents duplicated insertions when reconstructing partial database failures.
 
 ---
 
@@ -56,10 +60,10 @@ Because this repo uses a standard `pom.xml`, any major Java-enabled IDE (Intelli
 Once booted into the `CoreSQL>` prompt, try running the following sequential commands:
 
 ```sql
-CREATE TABLE employees (id, name, department)
-INSERT INTO employees VALUES (1, "Alice", "Engineering")
-INSERT INTO employees VALUES (2, "Bob", "Sales")
-SELECT * FROM employees
-SELECT name FROM employees WHERE id = 1
-EXIT
+CREATE TABLE employees (id INT, "full name" STRING, department STRING);
+INSERT INTO employees VALUES (1, "Alice Smith", "Engineering");
+INSERT INTO employees VALUES (2, "Bob Jones", "Sales");
+SELECT * FROM employees;
+SELECT "full name" FROM employees WHERE id = 1;
+EXIT;
 ```
