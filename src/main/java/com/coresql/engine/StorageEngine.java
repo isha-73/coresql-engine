@@ -13,8 +13,10 @@ import com.coresql.ast.ColumnDefinition;
 
 public class StorageEngine {
     private final String tablesDirectory = "tables/";
+    private final WalManager walManager;
 
-    public StorageEngine() {
+    public StorageEngine(WalManager walManager) {
+        this.walManager = walManager;
         File dir = new File(tablesDirectory);
         if (!dir.exists()) {
             dir.mkdirs();
@@ -23,6 +25,36 @@ public class StorageEngine {
 
     private String getTablePath(String tableName) {
         return tablesDirectory + tableName + ".csv";
+    }
+
+    public long getTableLsn(String tableName) {
+        File dataFile = new File(getTablePath(tableName));
+        if (!dataFile.exists()) {
+            return 0; // Data file is missing, so logical LSN is 0
+        }
+
+        String lsnPath = tablesDirectory + tableName + ".csv.lsn";
+        File file = new File(lsnPath);
+        if (file.exists()) {
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                String line = br.readLine();
+                if (line != null) {
+                    return Long.parseLong(line.trim());
+                }
+            } catch (Exception e) {
+                // Return 0 if file is unreadable or malformed
+            }
+        }
+        return 0;
+    }
+
+    public void updateTableLsn(String tableName, long lsn) {
+        String lsnPath = tablesDirectory + tableName + ".csv.lsn";
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(lsnPath))) {
+            bw.write(String.valueOf(lsn));
+        } catch (IOException e) {
+            System.err.println("Failed to update table LSN: " + e.getMessage());
+        }
     }
 
     private String encodeCsvRow(List<String> values) {
@@ -114,6 +146,10 @@ public class StorageEngine {
     }
 
     public boolean createTable(String tableName, List<ColumnDefinition> columns) {
+        return createTable(tableName, columns, false);
+    }
+
+    public boolean createTable(String tableName, List<ColumnDefinition> columns, boolean isRecovery) {
         String path = getTablePath(tableName);
         File file = new File(path);
         
@@ -127,9 +163,20 @@ public class StorageEngine {
             encodedCols.add(cd.name + ":" + cd.type);
         }
 
+        String encodedSchema = encodeCsvRow(encodedCols);
+
+        long lsn = -1;
+        if (!isRecovery && walManager != null) {
+            lsn = walManager.append(tableName, "CREATE_TABLE", encodedSchema);
+            walManager.flush();
+        }
+
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
-            bw.write(encodeCsvRow(encodedCols));
+            bw.write(encodedSchema);
             bw.newLine();
+            if (!isRecovery && lsn != -1) {
+                updateTableLsn(tableName, lsn);
+            }
             return true;
         } catch (IOException e) {
             System.err.println("Failed to create table file: " + path);
@@ -161,9 +208,20 @@ public class StorageEngine {
             return false;
         }
 
+        String encodedValues = encodeCsvRow(values);
+
+        long lsn = -1;
+        if (walManager != null) {
+            lsn = walManager.append(tableName, "INSERT", encodedValues);
+            walManager.flush();
+        }
+
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(file, true))) {
-            bw.write(encodeCsvRow(values));
+            bw.write(encodedValues);
             bw.newLine();
+            if (lsn != -1) {
+                updateTableLsn(tableName, lsn);
+            }
             return true;
         } catch (IOException e) {
             System.err.println("Failed to insert row: " + path);

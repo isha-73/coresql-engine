@@ -80,7 +80,7 @@ public class Parser {
         expect(TokenType.KEYWORD, "TABLE");
         
         Token nameToken = advance();
-        if (nameToken.type() != TokenType.IDENTIFIER) {
+        if (nameToken.type() != TokenType.IDENTIFIER && nameToken.type() != TokenType.STRING) {
             throw new IllegalArgumentException("Syntax error: expected table name");
         }
         query.tableName = nameToken.value();
@@ -90,7 +90,7 @@ public class Parser {
         // Parse columns
         while (!match(TokenType.SYMBOL, ")")) {
             Token colToken = advance();
-            if (colToken.type() != TokenType.IDENTIFIER) {
+            if (colToken.type() != TokenType.IDENTIFIER && colToken.type() != TokenType.STRING) {
                 throw new IllegalArgumentException("Syntax error: expected column name");
             }
 
@@ -116,7 +116,7 @@ public class Parser {
         expect(TokenType.KEYWORD, "INTO");
         
         Token nameToken = advance();
-        if (nameToken.type() != TokenType.IDENTIFIER) {
+        if (nameToken.type() != TokenType.IDENTIFIER && nameToken.type() != TokenType.STRING) {
             throw new IllegalArgumentException("Syntax error: expected table name");
         }
         query.tableName = nameToken.value();
@@ -147,7 +147,7 @@ public class Parser {
         
         // Parse columns
         Token colToken = advance();
-        if (colToken.type() == TokenType.IDENTIFIER) {
+        if (colToken.type() == TokenType.IDENTIFIER || colToken.type() == TokenType.STRING) {
             query.columns.add(colToken.value());
         } else if (colToken.type() == TokenType.SYMBOL && colToken.value().equals("*")) {
             query.columns.add("*"); 
@@ -158,7 +158,7 @@ public class Parser {
         expect(TokenType.KEYWORD, "FROM");
         
         Token nameToken = advance();
-        if (nameToken.type() != TokenType.IDENTIFIER) {
+        if (nameToken.type() != TokenType.IDENTIFIER && nameToken.type() != TokenType.STRING) {
             throw new IllegalArgumentException("Syntax error: expected table name");
         }
         query.tableName = nameToken.value();
@@ -168,7 +168,7 @@ public class Parser {
             query.whereClause = new Condition();
             
             Token whereCol = advance();
-            if (whereCol.type() != TokenType.IDENTIFIER) throw new IllegalArgumentException("Syntax error: expected column in WHERE");
+            if (whereCol.type() != TokenType.IDENTIFIER && whereCol.type() != TokenType.STRING) throw new IllegalArgumentException("Syntax error: expected column in WHERE");
             query.whereClause.column = whereCol.value();
             
             Token opToken = advance();

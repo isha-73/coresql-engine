@@ -3,6 +3,7 @@ package com.coresql;
 import com.coresql.ast.Query;
 import com.coresql.engine.Executor;
 import com.coresql.engine.StorageEngine;
+import com.coresql.engine.WalManager;
 import com.coresql.parser.Parser;
 import com.coresql.tokenizer.Token;
 import com.coresql.tokenizer.Tokenizer;
@@ -19,7 +20,10 @@ public class Main {
     public static void main(String[] args) {
         printWelcome();
 
-        StorageEngine storage = new StorageEngine();
+        WalManager walManager = new WalManager();
+        StorageEngine storage = new StorageEngine(walManager);
+        walManager.recover(storage);
+
         Executor executor = new Executor(storage);
 
         try (Scanner scanner = new Scanner(System.in)) {
