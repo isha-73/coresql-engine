@@ -18,13 +18,29 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        printWelcome();
+        boolean runServer = false;
+        int port = 5455;
+        for (String arg : args) {
+            if (arg.equals("--server")) {
+                runServer = true;
+            } else if (arg.startsWith("--port=")) {
+                port = Integer.parseInt(arg.substring(7));
+            }
+        }
 
         WalManager walManager = new WalManager();
         StorageEngine storage = new StorageEngine(walManager);
         walManager.recover(storage);
 
         Executor executor = new Executor(storage);
+
+        if (runServer) {
+            com.coresql.server.CoreSQLServer server = new com.coresql.server.CoreSQLServer(port, executor);
+            server.start();
+            return;
+        }
+
+        printWelcome();
 
         try (Scanner scanner = new Scanner(System.in)) {
             while (true) {
@@ -49,7 +65,10 @@ public class Main {
                     Parser parser = new Parser(tokens);
                     Query ast = parser.parse();
 
-                    executor.execute(ast);
+                    String result = executor.execute(ast);
+                    if (result != null && !result.isEmpty()) {
+                        System.out.println(result);
+                    }
                 } catch (Exception e) {
                     System.err.println("Error: " + e.getMessage());
                 }

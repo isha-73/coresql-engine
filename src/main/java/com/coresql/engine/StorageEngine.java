@@ -1,145 +1,63 @@
 package com.coresql.engine;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
 import com.coresql.ast.ColumnDefinition;
 
-public class StorageEngine {
-    private final String tablesDirectory = "tables/";
-    private final WalManager walManager;
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
+public class StorageEngine {
+    private final WalManager walManager;
+    private final Map<String, PageManager> pageManagers = new HashMap<>();
+    private final Map<String, BufferPool> bufferPools = new HashMap<>();
+    
     public StorageEngine(WalManager walManager) {
         this.walManager = walManager;
-        File dir = new File(tablesDirectory);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
     }
-
-    private String getTablePath(String tableName) {
-        return tablesDirectory + tableName + ".csv";
+    
+    private PageManager getPageManager(String tableName) {
+        return pageManagers.computeIfAbsent(tableName, PageManager::new);
+    }
+    
+    private BufferPool getBufferPool(String tableName) {
+        return bufferPools.computeIfAbsent(tableName, t -> new BufferPool(getPageManager(t), 64));
     }
 
     public long getTableLsn(String tableName) {
-        File dataFile = new File(getTablePath(tableName));
-        if (!dataFile.exists()) {
-            return 0; // Data file is missing, so logical LSN is 0
-        }
-
-        String lsnPath = tablesDirectory + tableName + ".csv.lsn";
+        String tablesDirectory = "tables/";
+        String lsnPath = tablesDirectory + tableName + ".db.lsn";
         File file = new File(lsnPath);
         if (file.exists()) {
-            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-                String line = br.readLine();
-                if (line != null) {
-                    return Long.parseLong(line.trim());
+            try (java.util.Scanner scanner = new java.util.Scanner(file)) {
+                if (scanner.hasNextLong()) {
+                    return scanner.nextLong();
                 }
             } catch (Exception e) {
-                // Return 0 if file is unreadable or malformed
+                // ignore
             }
         }
         return 0;
     }
 
     public void updateTableLsn(String tableName, long lsn) {
-        String lsnPath = tablesDirectory + tableName + ".csv.lsn";
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(lsnPath))) {
-            bw.write(String.valueOf(lsn));
-        } catch (IOException e) {
-            System.err.println("Failed to update table LSN: " + e.getMessage());
+        String tablesDirectory = "tables/";
+        String lsnPath = tablesDirectory + tableName + ".db.lsn";
+        try (java.io.PrintWriter pw = new java.io.PrintWriter(lsnPath)) {
+            pw.println(lsn);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-    }
-
-    private String encodeCsvRow(List<String> values) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < values.size(); i++) {
-            String value = values.get(i);
-            if (value == null) value = "";
-            boolean needsQuotes = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r");
-            if (needsQuotes) {
-                sb.append("\"").append(value.replace("\"", "\"\"")).append("\"");
-            } else {
-                sb.append(value);
-            }
-            if (i < values.size() - 1) {
-                sb.append(",");
-            }
-        }
-        return sb.toString();
-    }
-
-    private List<String> readCsvRow(BufferedReader br) throws IOException {
-        String line = br.readLine();
-        if (line == null) return null;
-
-        List<String> values = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inQuotes = false;
-
-        while (true) {
-            for (int i = 0; i < line.length(); i++) {
-                char c = line.charAt(i);
-                if (inQuotes) {
-                    if (c == '"') {
-                        if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
-                            current.append('"');
-                            i++;
-                        } else {
-                            inQuotes = false;
-                        }
-                    } else {
-                        current.append(c);
-                    }
-                } else {
-                    if (c == '"') {
-                        inQuotes = true;
-                    } else if (c == ',') {
-                        values.add(current.toString());
-                        current.setLength(0);
-                    } else {
-                        current.append(c);
-                    }
-                }
-            }
-            if (inQuotes) {
-                current.append("\n");
-                line = br.readLine();
-                if (line == null) break;
-            } else {
-                break;
-            }
-        }
-        values.add(current.toString());
-        return values;
     }
 
     public List<ColumnDefinition> readSchema(String tableName) {
-        String path = getTablePath(tableName);
-        File file = new File(path);
-        
-        if (!file.exists()) return null;
-
-        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-            List<String> header = readCsvRow(br);
-            if (header == null) return null;
-
-            List<ColumnDefinition> schema = new ArrayList<>();
-            for (String h : header) {
-                String[] parts = h.split(":");
-                if (parts.length >= 2) {
-                    schema.add(new ColumnDefinition(parts[0], parts[1]));
-                } else {
-                    schema.add(new ColumnDefinition(h, "STRING"));
-                }
-            }
-            return schema;
+        PageManager pm = getPageManager(tableName);
+        if (!pm.exists()) return null;
+        try {
+            return pm.readSchema();
         } catch (IOException e) {
             return null;
         }
@@ -150,125 +68,140 @@ public class StorageEngine {
     }
 
     public boolean createTable(String tableName, List<ColumnDefinition> columns, boolean isRecovery) {
-        String path = getTablePath(tableName);
-        File file = new File(path);
-        
-        if (file.exists()) {
+        PageManager pm = getPageManager(tableName);
+        if (!isRecovery && pm.exists()) {
             System.err.println("Table '" + tableName + "' already exists.");
             return false;
         }
-
-        List<String> encodedCols = new ArrayList<>();
-        for (ColumnDefinition cd : columns) {
-            encodedCols.add(cd.name + ":" + cd.type);
-        }
-
-        String encodedSchema = encodeCsvRow(encodedCols);
-
+        
         long lsn = -1;
         if (!isRecovery && walManager != null) {
-            lsn = walManager.append(tableName, "CREATE_TABLE", encodedSchema);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < columns.size(); i++) {
+                sb.append(columns.get(i).name).append(":").append(columns.get(i).type);
+                if (i < columns.size() - 1) sb.append(",");
+            }
+            byte[] data = sb.toString().getBytes(StandardCharsets.UTF_8);
+            lsn = walManager.append(tableName, "CREATE_TABLE", data);
             walManager.flush();
         }
-
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
-            bw.write(encodedSchema);
-            bw.newLine();
+        
+        try {
+            pm.initializeFile(columns);
             if (!isRecovery && lsn != -1) {
                 updateTableLsn(tableName, lsn);
             }
             return true;
         } catch (IOException e) {
-            System.err.println("Failed to create table file: " + path);
+            e.printStackTrace();
             return false;
         }
     }
 
     public boolean insertRow(String tableName, List<String> values) {
-        String path = getTablePath(tableName);
-        File file = new File(path);
+        PageManager pm = getPageManager(tableName);
+        if (!pm.exists()) return false;
         
-        if (!file.exists()) {
-            System.err.println("Table '" + tableName + "' does not exist.");
-            return false;
-        }
-
-        // Validate arity against table header
-        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-            List<String> header = readCsvRow(br);
-            if (header != null) {
-                int expectedCols = header.size();
-                if (values.size() != expectedCols) {
-                    System.err.println("Error: Column count mismatch. Expected " + expectedCols + ", got " + values.size());
-                    return false;
-                }
+        BufferPool pool = getBufferPool(tableName);
+        try {
+            List<ColumnDefinition> schema = pm.readSchema();
+            byte[] rowData = RowSerializer.serialize(values, schema);
+            
+            long lsn = -1;
+            if (walManager != null) {
+                lsn = walManager.append(tableName, "INSERT", rowData);
+                walManager.flush();
             }
-        } catch (IOException e) {
-            System.err.println("Failed to read header for validation: " + path);
-            return false;
-        }
 
-        String encodedValues = encodeCsvRow(values);
-
-        long lsn = -1;
-        if (walManager != null) {
-            lsn = walManager.append(tableName, "INSERT", encodedValues);
-            walManager.flush();
-        }
-
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(file, true))) {
-            bw.write(encodedValues);
-            bw.newLine();
+            int numPages = pm.getNumPages();
+            if (numPages == 0) {
+                numPages = 1;
+            }
+            
+            Page lastPage = pool.getPage(numPages - 1);
+            if (!lastPage.insertRow(rowData)) {
+                Page newPage = pool.getPage(numPages);
+                newPage.insertRow(rowData);
+                pool.flushPage(newPage);
+            } else {
+                pool.flushPage(lastPage);
+            }
+            
             if (lsn != -1) {
                 updateTableLsn(tableName, lsn);
             }
             return true;
         } catch (IOException e) {
-            System.err.println("Failed to insert row: " + path);
+            e.printStackTrace();
             return false;
         }
     }
 
-    public static class TableData {
-        public List<ColumnDefinition> columns = new ArrayList<>();
-        public List<List<String>> rows = new ArrayList<>();
-    }
-
     public TableData readTable(String tableName) {
-        String path = getTablePath(tableName);
-        File file = new File(path);
+        PageManager pm = getPageManager(tableName);
+        if (!pm.exists()) return null;
         
-        if (!file.exists()) {
-            System.err.println("Table '" + tableName + "' does not exist.");
-            return null;
-        }
-
-        TableData data = new TableData();
-        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-            List<String> header = readCsvRow(br);
-            if (header == null) {
-                return null; // Empty file
-            }
-            // Read header
-            for (String h : header) {
-                String[] parts = h.split(":");
-                if (parts.length >= 2) {
-                    data.columns.add(new ColumnDefinition(parts[0], parts[1]));
-                } else {
-                    data.columns.add(new ColumnDefinition(h, "STRING"));
+        BufferPool pool = getBufferPool(tableName);
+        try {
+            TableData data = new TableData();
+            data.columns = pm.readSchema();
+            int numPages = pm.getNumPages();
+            for (int i = 0; i < numPages; i++) {
+                Page page = pool.getPage(i);
+                List<byte[]> binaryRows = page.readRows();
+                for (byte[] binaryRow : binaryRows) {
+                    data.rows.add(RowSerializer.deserialize(binaryRow, data.columns));
                 }
-            }
-
-            // Read rows
-            List<String> row;
-            while ((row = readCsvRow(br)) != null) {
-                if (row.size() == 1 && row.get(0).isEmpty()) continue;
-                data.rows.add(row);
             }
             return data;
         } catch (IOException e) {
-            System.err.println("Failed to read table: " + path);
+            e.printStackTrace();
             return null;
+        }
+    }
+
+    public void recoverOperation(WalEntry entry) {
+        long tableLsn = getTableLsn(entry.tableName);
+        if (entry.lsn <= tableLsn) {
+            return; // Skip already applied
+        }
+
+        if ("CREATE_TABLE".equals(entry.operation)) {
+            String schemaStr = new String(entry.data, StandardCharsets.UTF_8);
+            String[] rawCols = schemaStr.split(",");
+            List<ColumnDefinition> columns = new ArrayList<>();
+            for (String col : rawCols) {
+                String[] parts = col.split(":");
+                if (parts.length >= 2) {
+                    columns.add(new ColumnDefinition(parts[0], parts[1]));
+                } else {
+                    columns.add(new ColumnDefinition(parts[0], "STRING"));
+                }
+            }
+            createTable(entry.tableName, columns, true);
+            updateTableLsn(entry.tableName, entry.lsn);
+
+        } else if ("INSERT".equals(entry.operation)) {
+            PageManager pm = getPageManager(entry.tableName);
+            if (!pm.exists()) return;
+
+            BufferPool pool = getBufferPool(entry.tableName);
+            try {
+                int numPages = pm.getNumPages();
+                if (numPages == 0) numPages = 1;
+                
+                Page lastPage = pool.getPage(numPages - 1);
+                if (!lastPage.insertRow(entry.data)) {
+                    Page newPage = pool.getPage(numPages);
+                    newPage.insertRow(entry.data);
+                    pool.flushPage(newPage);
+                } else {
+                    pool.flushPage(lastPage);
+                }
+                updateTableLsn(entry.tableName, entry.lsn);
+            } catch (IOException e) {
+                System.err.println("Failed to recover INSERT: " + e.getMessage());
+            }
         }
     }
 }

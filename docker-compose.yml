@@ -1,0 +1,12 @@
+services:
+  coresql:
+    build: .
+    image: coresql-engine:latest
+    container_name: coresql_server
+    ports:
+      - "5455:5455"
+    volumes:
+      # Maps the local 'tables' directory to the container's '/app/tables' directory
+      # This ensures your database files survive container restarts
+      - ./tables:/app/tables
+    restart: unless-stopped
