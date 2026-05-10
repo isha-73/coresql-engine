@@ -85,7 +85,7 @@ public class Executor {
     }
 
     private void executeSelect(SelectQuery query) {
-        StorageEngine.TableData data = storage.readTable(query.tableName);
+        TableData data = storage.readTable(query.tableName);
         if (data == null) {
             System.err.println("Failed to read table '" + query.tableName + "'.");
             return;

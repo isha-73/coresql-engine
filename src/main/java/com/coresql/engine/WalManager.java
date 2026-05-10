@@ -1,10 +1,6 @@
 package com.coresql.engine;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
-
-import com.coresql.ast.ColumnDefinition;
 
 public class WalManager {
     private final String walDirName = "data/";
@@ -23,11 +19,9 @@ public class WalManager {
         
         try {
             File walFile = new File(walFilePath);
-            // Append mode
             this.fos = new FileOutputStream(walFile, true);
             this.writer = new BufferedWriter(new OutputStreamWriter(fos));
             
-            // Read highest LSN from WAL log to initialize currentLsn
             if (walFile.exists()) {
                 try (BufferedReader br = new BufferedReader(new FileReader(walFile))) {
                     String line;
@@ -44,7 +38,7 @@ public class WalManager {
         }
     }
 
-    public synchronized long append(String tableName, String operation, String data) {
+    public synchronized long append(String tableName, String operation, byte[] data) {
         currentLsn++;
         long timestamp = System.currentTimeMillis() / 1000L;
         WalEntry entry = new WalEntry(currentLsn, timestamp, tableName, operation, data);
@@ -63,7 +57,7 @@ public class WalManager {
                 writer.flush();
             }
             if (fos != null) {
-                fos.getFD().sync(); // Force flush OS buffers to disk
+                fos.getFD().sync();
             }
         } catch (IOException e) {
             System.err.println("Failed to fsync WAL: " + e.getMessage());
@@ -93,7 +87,7 @@ public class WalManager {
             while ((line = br.readLine()) != null) {
                 WalEntry entry = WalEntry.deserialize(line);
                 if (entry != null && entry.lsn > checkpointLsn) {
-                    processRecovery(entry, storage);
+                    storage.recoverOperation(entry);
                     recoverCount++;
                 }
             }
@@ -104,45 +98,6 @@ public class WalManager {
         if (recoverCount > 0) {
             System.out.println("Recovered " + recoverCount + " operations from WAL.");
             updateCheckpoint(currentLsn);
-        }
-    }
-
-    private void processRecovery(WalEntry entry, StorageEngine storage) {
-        long tableLsn = storage.getTableLsn(entry.tableName);
-        if (entry.lsn <= tableLsn) {
-            return; // Skip already applied operations to avoid data duplication
-        }
-
-        if ("CREATE_TABLE".equals(entry.operation)) {
-            File tableFile = new File("tables/" + entry.tableName + ".csv");
-            if (!tableFile.exists()) {
-                // Determine schema from data
-                String[] rawCols = entry.data.split(",");
-                List<ColumnDefinition> columns = new ArrayList<>();
-                for (String col : rawCols) {
-                    // Remove quotes if present
-                    col = col.replace("\"", "");
-                    String[] parts = col.split(":");
-                    if (parts.length >= 2) {
-                        columns.add(new ColumnDefinition(parts[0], parts[1]));
-                    } else {
-                        columns.add(new ColumnDefinition(parts[0], "STRING"));
-                    }
-                }
-                storage.createTable(entry.tableName, columns, true);
-                storage.updateTableLsn(entry.tableName, entry.lsn);
-            }
-        } else if ("INSERT".equals(entry.operation)) {
-            File tableFile = new File("tables/" + entry.tableName + ".csv");
-            if (tableFile.exists()) {
-                try (BufferedWriter bw = new BufferedWriter(new FileWriter(tableFile, true))) {
-                    bw.write(entry.data);
-                    bw.newLine();
-                    storage.updateTableLsn(entry.tableName, entry.lsn);
-                } catch (IOException e) {
-                    System.err.println("Failed to insert row during recovery: " + e.getMessage());
-                }
-            }
         }
     }
 
