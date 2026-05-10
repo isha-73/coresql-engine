@@ -12,33 +12,32 @@ public class Executor {
         this.storage = storage;
     }
 
-    public void execute(Query query) {
-        if (query == null) return;
+    public String execute(Query query) {
+        if (query == null) return "Error: Query is null";
 
         switch (query.getType()) {
-            case CREATE_TABLE -> executeCreateTable((CreateTableQuery) query);
-            case INSERT -> executeInsert((InsertQuery) query);
-            case SELECT -> executeSelect((SelectQuery) query);
-            default -> System.err.println("Unknown query type.");
+            case CREATE_TABLE -> { return executeCreateTable((CreateTableQuery) query); }
+            case INSERT -> { return executeInsert((InsertQuery) query); }
+            case SELECT -> { return executeSelect((SelectQuery) query); }
+            default -> { return "Error: Unknown query type."; }
         }
     }
 
-    private void executeCreateTable(CreateTableQuery query) {
+    private String executeCreateTable(CreateTableQuery query) {
         if (storage.createTable(query.tableName, query.columns)) {
-            System.out.println("Table '" + query.tableName + "' created successfully.");
+            return "Table '" + query.tableName + "' created successfully.";
         }
+        return "Error: Failed to create table '" + query.tableName + "'.";
     }
 
-    private void executeInsert(InsertQuery query) {
+    private String executeInsert(InsertQuery query) {
         List<ColumnDefinition> schema = storage.readSchema(query.tableName);
         if (schema == null) {
-            System.err.println("Table '" + query.tableName + "' does not exist.");
-            return;
+            return "Error: Table '" + query.tableName + "' does not exist.";
         }
 
         if (schema.size() != query.values.size()) {
-            System.err.println("Error: Column count mismatch. Expected " + schema.size() + ", got " + query.values.size());
-            return;
+            return "Error: Column count mismatch. Expected " + schema.size() + ", got " + query.values.size();
         }
 
         // Validate types
@@ -50,15 +49,15 @@ public class Executor {
                 try {
                     Integer.parseInt(val);
                 } catch (NumberFormatException e) {
-                    System.err.println("Error: Value '" + val + "' is not a valid " + expectedType + " for column '" + schema.get(i).name + "'.");
-                    return;
+                    return "Error: Value '" + val + "' is not a valid " + expectedType + " for column '" + schema.get(i).name + "'.";
                 }
             }
         }
 
         if (storage.insertRow(query.tableName, query.values)) {
-            System.out.println("1 row inserted into '" + query.tableName + "'.");
+            return "1 row inserted into '" + query.tableName + "'.";
         }
+        return "Error: Failed to insert row into '" + query.tableName + "'.";
     }
 
     private boolean evaluateCondition(String rowVal, String op, String condVal, String type) {
@@ -84,11 +83,10 @@ public class Executor {
         return false;
     }
 
-    private void executeSelect(SelectQuery query) {
+    private String executeSelect(SelectQuery query) {
         TableData data = storage.readTable(query.tableName);
         if (data == null) {
-            System.err.println("Failed to read table '" + query.tableName + "'.");
-            return;
+            return "Error: Failed to read table '" + query.tableName + "'.";
         }
 
         List<Integer> colIndices = new ArrayList<>();
@@ -108,8 +106,7 @@ public class Executor {
                 if (index != -1) {
                     colIndices.add(index);
                 } else {
-                    System.err.println("Column '" + colName + "' not found.");
-                    return;
+                    return "Error: Column '" + colName + "' not found.";
                 }
             }
         }
@@ -125,26 +122,26 @@ public class Executor {
                 }
             }
             if (whereColIdx == -1) {
-                System.err.println("WHERE column '" + query.whereClause.column + "' not found.");
-                return;
+                return "Error: WHERE column '" + query.whereClause.column + "' not found.";
             }
             if (whereExpectedType.equals("INT") || whereExpectedType.equals("INTEGER")) {
                 try {
                     Integer.parseInt(query.whereClause.value);
                 } catch (NumberFormatException e) {
-                    System.err.println("Error: WHERE clause value '" + query.whereClause.value + "' is not a valid " + whereExpectedType + ".");
-                    return;
+                    return "Error: WHERE clause value '" + query.whereClause.value + "' is not a valid " + whereExpectedType + ".";
                 }
             }
         }
 
+        StringBuilder sb = new StringBuilder();
+
         // Print header
         for (int i = 0; i < colIndices.size(); i++) {
-            System.out.print(data.columns.get(colIndices.get(i)).name);
-            if (i < colIndices.size() - 1) System.out.print(" | ");
+            sb.append(data.columns.get(colIndices.get(i)).name);
+            if (i < colIndices.size() - 1) sb.append(" | ");
         }
-        System.out.println();
-        System.out.println("-".repeat(Math.max(10, colIndices.size() * 10)));
+        sb.append("\n");
+        sb.append("-".repeat(Math.max(10, colIndices.size() * 10))).append("\n");
 
         // Print rows
         int matchCount = 0;
@@ -156,12 +153,13 @@ public class Executor {
             }
             
             for (int i = 0; i < colIndices.size(); i++) {
-                System.out.print(row.get(colIndices.get(i)));
-                if (i < colIndices.size() - 1) System.out.print(" | ");
+                sb.append(row.get(colIndices.get(i)));
+                if (i < colIndices.size() - 1) sb.append(" | ");
             }
-            System.out.println();
+            sb.append("\n");
             matchCount++;
         }
-        System.out.println("(" + matchCount + " rows)");
+        sb.append("(").append(matchCount).append(" rows)");
+        return sb.toString();
     }
 }
